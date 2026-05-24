@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D 地球 · TERRA</title>
+
+  <!-- Google Fonts：标题用 Bebas Neue，正文用 Rajdhani -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet" />
+
+  <!-- Three.js 核心库 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    /* ──────────────────────────────────────────
+       CSS 变量 & 全局重置
+    ────────────────────────────────────────── */
+    :root {
+      --bg:        #050810;
+      --panel:     rgba(8, 14, 28, 0.82);
+      --border:    rgba(80, 160, 255, 0.18);
+      --accent:    #3e9fff;
+      --accent2:   #00e5ff;
+      --text:      #c8daf5;
+      --text-dim:  #5a7aaa;
+      --glow:      0 0 18px rgba(62, 159, 255, 0.45);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: 'Rajdhani', sans-serif;
+      color: var(--text);
+    }
+
+    /* ──────────────────────────────────────────
+       Three.js 画布容器
+    ────────────────────────────────────────── */
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    canvas { display: block; }
+
+    /* ──────────────────────────────────────────
+       品牌标题（右下角）
+    ────────────────────────────────────────── */
+    #brand {
+      position: fixed;
+      bottom: 36px; right: 40px;
+      z-index: 10;
+      text-align: right;
+      pointer-events: none;
+    }
+    #brand h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 72px;
+      line-height: 1;
+      letter-spacing: 8px;
+      color: transparent;
+      /* 渐变文字 */
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      opacity: 0.18;
+    }
+    #brand p {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* ──────────────────────────────────────────
+       左上角控制面板
+    ────────────────────────────────────────── */
+    #panel {
+      position: fixed;
+      top: 32px; left: 32px;
+      z-index: 10;
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* 搜索区域 */
+    #search-wrap {
+      display: flex;
+      gap: 8px;
+    }
+
+    #search-input {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      outline: none;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #search-input::placeholder { color: var(--text-dim); }
+    #search-input:focus {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+
+    #search-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      width: 42px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #search-btn:hover  { background: var(--accent2); }
+    #search-btn:active { transform: scale(0.93); }
+    #search-btn svg    { width: 18px; height: 18px; fill: #fff; }
+
+    /* 快捷城市按钮组 */
+    #city-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .city-btn {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--text);
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      text-align: left;
+      transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .city-btn:hover {
+      background: rgba(62, 159, 255, 0.15);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: var(--glow);
+    }
+    .city-btn .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    /* 状态提示 */
+    #status {
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding-left: 2px;
+      min-height: 16px;
+      transition: color 0.3s;
+    }
+    #status.ok    { color: var(--accent2); }
+    #status.err   { color: #ff5555; }
+
+    /* ──────────────────────────────────────────
+       右上角经纬度读数
+    ────────────────────────────────────────── */
+    #coords {
+      position: fixed;
+      top: 32px; right: 40px;
+      z-index: 10;
+      text-align: right;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      line-height: 1.9;
+      pointer-events: none;
+    }
+    #coords span { color: var(--text); font-weight: 600; }
+
+    /* ──────────────────────────────────────────
+       底部操作提示
+    ────────────────────────────────────────── */
+    #hints {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 28px;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+    #hints span::before {
+      content: '◆';
+      font-size: 6px;
+      margin-right: 6px;
+      color: var(--accent);
+      vertical-align: middle;
+    }
+
+    /* ──────────────────────────────────────────
+       扫描线叠加层（氛围装饰）
+    ────────────────────────────────────────── */
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0, 0, 0, 0.04) 3px,
+        rgba(0, 0, 0, 0.04) 4px
+      );
+    }
+
+    /* ──────────────────────────────────────────
+       加载遮罩
+    ────────────────────────────────────────── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      transition: opacity 0.8s;
+    }
+    #loading h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 48px;
+      letter-spacing: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #loading p {
+      font-size: 12px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    /* 旋转加载环 */
+    .loader-ring {
+      width: 48px; height: 48px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 加载遮罩 -->
+  <div id="loading">
+    <div class="loader-ring"></div>
+    <h2>TERRA</h2>
+    <p>正在加载地球纹理…</p>
+  </div>
+
+  <!-- WebGL 画布容器 -->
+  <div id="canvas-container"></div>
+
+  <!-- 扫描线装饰 -->
+  <div id="scanlines"></div>
+
+  <!-- 左上角控制面板 -->
+  <div id="panel">
+    <div id="search-wrap">
+      <input id="search-input" type="text" placeholder="搜索城市…" autocomplete="off" />
+      <button id="search-btn" title="搜索">
+        <!-- 放大镜 SVG -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
+                stroke="#fff" stroke-width="2" stroke-linecap="round"
+                fill="none"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 预设城市按钮 -->
+    <div id="city-grid">
+      <button class="city-btn" data-city="北京">
+        <span class="dot"></span>北京
+      </button>
+      <button class="city-btn" data-city="纽约">
+        <span class="dot"></span>纽约
+      </button>
+      <button class="city-btn" data-city="巴黎">
+        <span class="dot"></span>巴黎
+      </button>
+      <button class="city-btn" data-city="悉尼">
+        <span class="dot"></span>悉尼
+      </button>
+    </div>
+
+    <!-- 状态文字 -->
+    <div id="status">准备就绪</div>
+  </div>
+
+  <!-- 右上角坐标 -->
+  <div id="coords">
+    纬度 <span id="lat">0.00°</span><br/>
+    经度 <span id="lng">0.00°</span><br/>
+    距离 <span id="dist">—</span>
+  </div>
+
+  <!-- 品牌 -->
+  <div id="brand">
+    <h1>TERRA</h1>
+    <p>Interactive Globe · 3D</p>
+  </div>
+
+  <!-- 底部提示 -->
+  <div id="hints">
+    <span>拖拽旋转</span>
+    <span>滚轮缩放</span>
+    <span>点击飞行</span>
+  </div>
+
+  <script>
+  /* ══════════════════════════════════════════════════════════════
+     城市数据库：存储常用城市的经纬度
+     lat = 纬度（正北/负南），lng = 经度（正东/负西）
+  ══════════════════════════════════════════════════════════════ */
+  const CITY_DB = {
+    '北京':   { lat: 39.9042,  lng: 116.4074 },
+    '上海':   { lat: 31.2304,  lng: 121.4737 },
+    '广州':   { lat: 23.1291,  lng: 113.2644 },
+    '深圳':   { lat: 22.5431,  lng: 114.0579 },
+    '香港':   { lat: 22.3193,  lng: 114.1694 },
+    '台北':   { lat: 25.0330,  lng: 121.5654 },
+    '东京':   { lat: 35.6762,  lng: 139.6503 },
+    '首尔':   { lat: 37.5665,  lng: 126.9780 },
+    '新加坡': { lat:  1.3521,  lng: 103.8198 },
+    '曼谷':   { lat: 13.7563,  lng: 100.5018 },
+    '孟买':   { lat: 19.0760,  lng:  72.8777 },
+    '迪拜':   { lat: 25.2048,  lng:  55.2708 },
+    '莫斯科': { lat: 55.7558,  lng:  37.6173 },
+    '伊斯坦布尔': { lat: 41.0082, lng: 28.9784 },
+    '开罗':   { lat: 30.0444,  lng:  31.2357 },
+    '巴黎':   { lat: 48.8566,  lng:   2.3522 },
+    '伦敦':   { lat: 51.5074,  lng:  -0.1278 },
+    '柏林':   { lat: 52.5200,  lng:  13.4050 },
+    '马德里': { lat: 40.4168,  lng:  -3.7038 },
+    '罗马':   { lat: 41.9028,  lng:  12.4964 },
+    '纽约':   { lat: 40.7128,  lng: -74.0060 },
+    '洛杉矶': { lat: 34.0522,  lng:-118.2437 },
+    '芝加哥': { lat: 41.8781,  lng: -87.6298 },
+    '多伦多': { lat: 43.6532,  lng: -79.3832 },
+    '圣保罗': { lat:-23.5505,  lng: -46.6333 },
+    '布宜诺斯艾利斯':{ lat:-34.6037, lng:-58.3816 },
+    '开普敦': { lat:-33.9249,  lng:  18.4241 },
+    '悉尼':   { lat:-33.8688,  lng: 151.2093 },
+    '墨尔本': { lat:-37.8136,  lng: 144.9631 },
+    '奥克兰': { lat:-36.8485,  lng: 174.7633 },
+    // 英文别名
+    'beijing':   { lat: 39.9042,  lng: 116.4074 },
+    'shanghai':  { lat: 31.2304,  lng: 121.4737 },
+    'tokyo':     { lat: 35.6762,  lng: 139.6503 },
+    'seoul':     { lat: 37.5665,  lng: 126.9780 },
+    'singapore': { lat:  1.3521,  lng: 103.8198 },
+    'dubai':     { lat: 25.2048,  lng:  55.2708 },
+    'moscow':    { lat: 55.7558,  lng:  37.6173 },
+    'paris':     { lat: 48.8566,  lng:   2.3522 },
+    'london':    { lat: 51.5074,  lng:  -0.1278 },
+    'berlin':    { lat: 52.5200,  lng:  13.4050 },
+    'rome':      { lat: 41.9028,  lng:  12.4964 },
+    'newyork':   { lat: 40.7128,  lng: -74.0060 },
+    'new york':  { lat: 40.7128,  lng: -74.0060 },
+    'losangeles':{ lat: 34.0522,  lng:-118.2437 },
+    'chicago':   { lat: 41.8781,  lng: -87.6298 },
+    'sydney':    { lat:-33.8688,  lng: 151.2093 },
+    'melbourne': { lat:-37.8136,  lng: 144.9631 },
+  };
+
+  /* ══════════════════════════════════════════════════════════════
+     全局变量
+  ══════════════════════════════════════════════════════════════ */
+  let scene, camera, renderer;
+  let earthMesh, cloudMesh, atmosphereMesh, starField;
+  let isDragging = false;
+  let prevMouse = { x: 0, y: 0 };
+  let rotVelocity = { x: 0, y: 0 };   // 惯性旋转速度
+  let autoRotate = true;               // 是否自动旋转
+
+  // 相机飞行动画状态
+  let flyAnim = null;
+
+  /* ══════════════════════════════════════════════════════════════
+     工具：经纬度 → 三维坐标（球面）
+     radius: 球半径, lat: 纬度(度), lng: 经度(度)
+  ══════════════════════════════════════════════════════════════ */
+  function latLngToVec3(lat, lng, radius) {
+    const phi   = (90 - lat)  * (Math.PI / 180); // 极角（从北极算）
+    const theta = (lng + 180) * (Math.PI / 180); // 方位角
+    return new THREE.Vector3(
+      -radius * Math.sin(phi) * Math.cos(theta),
+       radius * Math.cos(phi),
+       radius * Math.sin(phi) * Math.sin(theta)
+    );
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     初始化 Three.js 场景
+  ══════════════════════════════════════════════════════════════ */
+  function initScene() {
+    /* ── 场景 ── */
+    scene = new THREE.Scene();
+
+    /* ── 摄像机：透视投影 ── */
+    camera = new THREE.PerspectiveCamera(
+      45,                                           // 视野角度
+      window.innerWidth / window.innerHeight,       // 宽高比
+      0.1,                                          // 近裁切面
+      1000                                          // 远裁切面
+    );
+    camera.position.z = 2.8; // 初始距地球中心距离
+
+    /* ── 渲染器 ── */
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    /* ── 光照 ── */
+    // 环境光（补光，避免背面全黑）
+    const ambientLight = new THREE.AmbientLight(0x223355, 1.2);
+    scene.add(ambientLight);
+
+    // 方向光（模拟太阳）
+    const sunLight = new THREE.DirectionalLight(0xfff4e0, 2.2);
+    sunLight.position.set(5, 3, 5);
+    scene.add(sunLight);
+
+    // 半球光（天空/地面）
+    const hemiLight = new THREE.HemisphereLight(0x1a3a6a, 0x0a0a14, 0.4);
+    scene.add(hemiLight);
+
+    /* ── 纹理加载器 ── */
+    const loader = new THREE.TextureLoader();
+    // 允许跨域
+    loader.crossOrigin = 'anonymous';
+
+    /* ── 星空背景 ── */
+    createStarField();
+
+    /* ── 地球主体 ── */
+    // 纹理：使用 NASA Blue Marble（公开 CDN）
+    const earthTex = loader.load(
+      'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
+      onTextureLoaded // 加载完成回调
+    );
+    // 凹凸贴图（高程起伏）
+    const bumpTex = loader.load(
+      'https://unpkg.com/three-globe/example/img/earth-topology.png'
+    );
+    // 高光贴图（区分陆地/海洋反光）
+    const specTex = loader.load(
+      'https://unpkg.com/three-globe/example/img/earth-water.png'
+    );
+
+    const earthGeo = new THREE.SphereGeometry(1, 64, 64);
+    const earthMat = new THREE.MeshPhongMaterial({
+      map:          earthTex,
+      bumpMap:      bumpTex,
+      bumpScale:    0.05,
+      specularMap:  specTex,
+      specular:     new THREE.Color(0x226688),
+      shininess:    18,
+    });
+    earthMesh = new THREE.Mesh(earthGeo, earthMat);
+    scene.add(earthMesh);
+
+    /* ── 云层 ── */
+    const cloudTex = loader.load(
+      'https://unpkg.com/three-globe/example/img/earth-clouds.png'
+    );
+    const cloudGeo = new THREE.SphereGeometry(1.012, 64, 64);
+    const cloudMat = new THREE.MeshPhongMaterial({
+      map:         cloudTex,
+      transparent: true,
+      opacity:     0.4,
+      depthWrite:  false,
+    });
+    cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+    scene.add(cloudMesh);
+
+    /* ── 大气层光晕 ── */
+    createAtmosphere();
+
+    /* ── 窗口大小自适应 ── */
+    window.addEventListener('resize', onWindowResize);
+
+    /* ── 鼠标/触摸事件 ── */
+    bindInteraction();
+
+    /* ── 开始渲染循环 ── */
+    animate();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     创建星空（随机散布点云）
+  ══════════════════════════════════════════════════════════════ */
+  function createStarField() {
+    const count = 8000;
+    const geo   = new THREE.BufferGeometry();
+    const pos   = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      // 随机球壳上的点
+      const r     = 200 + Math.random() * 300;
+      const phi   = Math.acos(2 * Math.random() - 1);
+      const theta = 2 * Math.PI * Math.random();
+      pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.cos(phi);
+      pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0xaaccff,
+      size:  0.25,
+      transparent: true,
+      opacity: 0.7,
+      sizeAttenuation: true,
+    });
+    starField = new THREE.Points(geo, mat);
+    scene.add(starField);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     创建大气层光晕（Fresnel 效果近似）
+  ══════════════════════════════════════════════════════════════ */
+  function createAtmosphere() {
+    const geo = new THREE.SphereGeometry(1.06, 64, 64);
+    const mat = new THREE.MeshPhongMaterial({
+      color:       0x1a6aff,
+      transparent: true,
+      opacity:     0.07,
+      depthWrite:  false,
+      side:        THREE.BackSide, // 只渲染内表面，从外向内发光
+    });
+    atmosphereMesh = new THREE.Mesh(geo, mat);
+
+    // 外层柔和光晕
+    const geo2 = new THREE.SphereGeometry(1.15, 64, 64);
+    const mat2 = new THREE.MeshPhongMaterial({
+      color:       0x0044cc,
+      transparent: true,
+      opacity:     0.04,
+      depthWrite:  false,
+      side:        THREE.BackSide,
+    });
+    const atmo2 = new THREE.Mesh(geo2, mat2);
+
+    scene.add(atmosphereMesh);
+    scene.add(atmo2);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     纹理加载完成：隐藏加载遮罩
+  ══════════════════════════════════════════════════════════════ */
+  function onTextureLoaded() {
+    const loadingEl = document.getElementById('loading');
+    loadingEl.classList.add('hidden');
+    setTimeout(() => { loadingEl.style.display = 'none'; }, 900);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     窗口大小变化
+  ══════════════════════════════════════════════════════════════ */
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     渲染循环
+  ══════════════════════════════════════════════════════════════ */
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // 自动慢速旋转
+    if (autoRotate && !isDragging && !flyAnim) {
+      earthMesh.rotation.y  += 0.0008;
+      cloudMesh.rotation.y  += 0.0010; // 云层略快
+    }
+
+    // 惯性旋转衰减
+    if (!isDragging && !flyAnim) {
+      earthMesh.rotation.y += rotVelocity.x;
+      earthMesh.rotation.x += rotVelocity.y;
+      cloudMesh.rotation.y += rotVelocity.x;
+      cloudMesh.rotation.x += rotVelocity.y;
+      rotVelocity.x *= 0.93; // 摩擦衰减
+      rotVelocity.y *= 0.93;
+    }
+
+    // 云层始终缓慢偏转
+    cloudMesh.rotation.y += 0.0001;
+
+    // 飞行动画处理
+    if (flyAnim) tickFly();
+
+    // 更新坐标显示
+    updateCoords();
+
+    renderer.render(scene, camera);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     坐标 HUD 更新
+     根据地球当前旋转角度，反算摄像机正对的经纬度
+  ══════════════════════════════════════════════════════════════ */
+  function updateCoords() {
+    // 摄像机视线方向（归一化）
+    const dir = new THREE.Vector3(0, 0, -1)
+      .applyQuaternion(camera.quaternion)
+      .negate()
+      .normalize();
+
+    // 转到地球本地坐标系
+    const inv = new THREE.Quaternion().copy(earthMesh.quaternion).invert();
+    dir.applyQuaternion(inv);
+
+    // 球面坐标 → 经纬度
+    const lat = 90 - Math.acos(dir.y) * (180 / Math.PI);
+    let   lng = Math.atan2(dir.z, -dir.x) * (180 / Math.PI) - 180;
+    if (lng < -180) lng += 360;
+
+    document.getElementById('lat').textContent  = lat.toFixed(2) + '°';
+    document.getElementById('lng').textContent  = lng.toFixed(2) + '°';
+    // 距离：相机距地心距离，地球半径=1
+    const dist = camera.position.length();
+    document.getElementById('dist').textContent = dist.toFixed(2) + ' R';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     绑定鼠标 & 滚轮交互
+  ══════════════════════════════════════════════════════════════ */
+  function bindInteraction() {
+    const canvas = renderer.domElement;
+
+    /* 鼠标按下 → 开始拖拽 */
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging  = true;
+      autoRotate  = false;
+      prevMouse   = { x: e.clientX, y: e.clientY };
+      rotVelocity = { x: 0, y: 0 };
+      if (flyAnim) flyAnim = null; // 中断飞行
+    });
+
+    /* 鼠标移动 → 旋转地球 */
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - prevMouse.x;
+      const dy = e.clientY - prevMouse.y;
+
+      // 旋转速度比例
+      const speed = 0.005;
+      earthMesh.rotation.y += dx * speed;
+      earthMesh.rotation.x += dy * speed;
+      cloudMesh.rotation.y += dx * speed;
+      cloudMesh.rotation.x += dy * speed;
+
+      // 记录速度用于惯性
+      rotVelocity.x = dx * speed;
+      rotVelocity.y = dy * speed;
+
+      prevMouse = { x: e.clientX, y: e.clientY };
+    });
+
+    /* 鼠标松开 → 停止拖拽 */
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    /* 滚轮 → 缩放（调整相机 Z 轴距离）*/
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY * 0.001;
+      camera.position.z = Math.max(1.3, Math.min(6, camera.position.z + delta));
+    }, { passive: false });
+
+    /* ── 触摸支持（移动端） ── */
+    let lastTouchDist = 0;
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        autoRotate = false;
+        prevMouse  = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        rotVelocity = { x: 0, y: 0 };
+        if (flyAnim) flyAnim = null;
+      } else if (e.touches.length === 2) {
+        // 双指捏合缩放：记录初始距离
+        lastTouchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isDragging) {
+        const dx = e.touches[0].clientX - prevMouse.x;
+        const dy = e.touches[0].clientY - prevMouse.y;
+        const speed = 0.005;
+        earthMesh.rotation.y += dx * speed;
+        earthMesh.rotation.x += dy * speed;
+        cloudMesh.rotation.y += dx * speed;
+        cloudMesh.rotation.x += dy * speed;
+        rotVelocity.x = dx * speed;
+        rotVelocity.y = dy * speed;
+        prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const delta = (lastTouchDist - dist) * 0.01;
+        camera.position.z = Math.max(1.3, Math.min(6, camera.position.z + delta));
+        lastTouchDist = dist;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+      isDragging = false;
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     飞行到目标城市
+     lat, lng：目标经纬度（度）
+  ══════════════════════════════════════════════════════════════ */
+  function flyToCity(lat, lng, cityName) {
+    setStatus(`飞往 ${cityName}…`, '');
+
+    // 飞行目标旋转角度：让目标城市转到摄像机正前方
+    // 三.js 中地球旋转 Y 对应经度，X 对应纬度
+    const targetRotY = -lng * (Math.PI / 180);
+    const targetRotX = -lat * (Math.PI / 180);
+    const targetZ    = 2.0; // 到达后的相机距离
+
+    // 起始状态
+    const startRotY = earthMesh.rotation.y;
+    const startRotX = earthMesh.rotation.x;
+    const startZ    = camera.position.z;
+
+    // 对 Y 轴旋转做最短弧插值
+    let dY = ((targetRotY - startRotY) % (2 * Math.PI));
+    if (dY >  Math.PI) dY -= 2 * Math.PI;
+    if (dY < -Math.PI) dY += 2 * Math.PI;
+    const endRotY = startRotY + dY;
+
+    const duration = 1800; // 飞行时长（毫秒）
+    const startTime = performance.now();
+
+    flyAnim = { startTime, duration,
+      startRotY, endRotY, startRotX, targetRotX,
+      startZ, targetZ, cityName };
+
+    autoRotate  = false;
+    rotVelocity = { x: 0, y: 0 };
+  }
+
+  /* ──────────────────────────────────────────
+     每帧推进飞行动画（在 animate() 中调用）
+  ────────────────────────────────────────── */
+  function tickFly() {
+    const now = performance.now();
+    let t = (now - flyAnim.startTime) / flyAnim.duration;
+    if (t >= 1) {
+      t = 1;
+      setStatus(`已到达 ${flyAnim.cityName}`, 'ok');
+      flyAnim = null;
+    }
+
+    // 缓动函数：ease-in-out cubic
+    const ease = t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    // 插值旋转
+    const rotY = flyAnim.startRotY + (flyAnim.endRotY   - flyAnim.startRotY)   * ease;
+    const rotX = flyAnim.startRotX + (flyAnim.targetRotX - flyAnim.startRotX)  * ease;
+    earthMesh.rotation.y = rotY;
+    earthMesh.rotation.x = rotX;
+    cloudMesh.rotation.y = rotY;
+    cloudMesh.rotation.x = rotX;
+
+    // 插值相机距离（先拉远再靠近，形成弧线感）
+    const midZ = Math.max(flyAnim.startZ, flyAnim.targetZ) + 0.8;
+    const zEase = t < 0.5
+      ? flyAnim.startZ  + (midZ - flyAnim.startZ)  * (t * 2)
+      : midZ            + (flyAnim.targetZ - midZ)  * ((t - 0.5) * 2);
+    camera.position.z = zEase;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     状态提示
+  ══════════════════════════════════════════════════════════════ */
+  function setStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className   = cls || '';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     搜索城市
+  ══════════════════════════════════════════════════════════════ */
+  function searchCity(rawName) {
+    const name = rawName.trim();
+    if (!name) return;
+
+    // 尝试匹配（不区分大小写）
+    const key = Object.keys(CITY_DB).find(
+      k => k.toLowerCase() === name.toLowerCase()
+    );
+
+    if (key) {
+      const { lat, lng } = CITY_DB[key];
+      flyToCity(lat, lng, key);
+    } else {
+      setStatus(`找不到城市：${name}`, 'err');
+      // 3秒后恢复
+      setTimeout(() => setStatus('准备就绪', ''), 3000);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     UI 事件绑定
+  ══════════════════════════════════════════════════════════════ */
+  // 搜索按钮
+  document.getElementById('search-btn').addEventListener('click', () => {
+    searchCity(document.getElementById('search-input').value);
+  });
+
+  // 回车触发搜索
+  document.getElementById('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      searchCity(e.target.value);
+    }
+  });
+
+  // 预设城市按钮
+  document.querySelectorAll('.city-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const city = btn.dataset.city;
+      const { lat, lng } = CITY_DB[city];
+      flyToCity(lat, lng, city);
+    });
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     启动！
+  ══════════════════════════════════════════════════════════════ */
+  initScene();
+  </script>
+</body>
+</html>
